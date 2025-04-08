@@ -2,7 +2,10 @@ package main
 
 import (
 	"bufio"
+	"encoding/json"
 	"fmt"
+	"io"
+	"net/http"
 	"os"
 	"strings"
 )
@@ -10,7 +13,7 @@ import (
 type cliCommand struct {
 	name        string
 	description string
-	callback    func() error
+	callback    func(cfg *config) error
 }
 
 var commands = map[string]cliCommand{
@@ -21,12 +24,23 @@ var commands = map[string]cliCommand{
 	},
 	"help": {
 		name:        "help",
-		description: "Exit the Pokedex",
+		description: "Displays a help message",
 		callback:    commandHelp,
+	},
+	"map": {
+		name:        "map",
+		description: "Displays the names of 20 location areas in the Pokemon world",
+		callback:    commandMap,
+	},
+	"mapb": {
+		name:        "map",
+		description: "Displays the names of 20 previous location areas in the Pokemon world",
+		callback:    commandMapb,
 	},
 }
 
 func main() {
+	cfg := &config{}
 	scanner := bufio.NewScanner(os.Stdin) // Create a scanner for standard input
 	for {
 		fmt.Print("Pokedex > ")
@@ -41,7 +55,7 @@ func main() {
 		if len(cleanedText) > 0 {
 			command, exists := commands[cleanedText[0]]
 			if exists {
-				err := command.callback()
+				err := command.callback(cfg)
 				if err != nil {
 					fmt.Println("Error:", err)
 				}
@@ -56,17 +70,113 @@ func cleanInput(text string) []string {
 	return strings.Fields(strings.ToLower(strings.TrimSpace(text)))
 }
 
-func commandExit() error {
+func commandExit(cfg *config) error {
 	fmt.Println("Closing the Pokedex... Goodbye!")
 	os.Exit(0)
 	return nil
 }
 
-func commandHelp() error {
+func commandHelp(cfg *config) error {
 	fmt.Println("Welcome to the Pokedex!")
 	fmt.Println("Usage:")
 	fmt.Println()
 	fmt.Println("help: Displays a help message")
 	fmt.Println("exit: Exit the Pokedex")
+	fmt.Println("map: Displays the names of 20 location areas in the Pokemon world")
+	fmt.Println("mapb: Displays the names of 20 previous location areas in the Pokemon world")
+	return nil
+}
+
+type config struct {
+	NextURL     string
+	PreviousURL string
+}
+
+type LocationAreaResponse struct {
+	Count    int    `json:"count"`
+	Next     string `json:"next"`
+	Previous string `json:"previous"`
+	Results  []struct {
+		Name string `json:"name"`
+		URL  string `json:"url"`
+	} `json:"results"`
+}
+
+func commandMap(cfg *config) error {
+	// 1. Determine which URL to use (first request or using the NextURL)
+	url := "https://pokeapi.co/api/v2/location-area"
+	if cfg.NextURL != "" {
+		url = cfg.NextURL
+	}
+
+	resp, err := http.Get(url)
+	if err != nil {
+		fmt.Println("An error occurred trying to find the locations")
+		return err
+	}
+	defer resp.Body.Close()
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		fmt.Println("Error reading response body")
+		return err
+	}
+
+	var locationResp LocationAreaResponse
+	err = json.Unmarshal(body, &locationResp)
+	if err != nil {
+		fmt.Println("Error parsing location data")
+		return err
+	}
+
+	// Print location names
+	for _, location := range locationResp.Results {
+		fmt.Println(location.Name)
+	}
+
+	// Update config for pagination
+	cfg.NextURL = locationResp.Next
+	cfg.PreviousURL = locationResp.Previous
+
+	return nil
+}
+
+func commandMapb(cfg *config) error {
+	// Check if we're on the first page
+	if cfg.PreviousURL == "" {
+		fmt.Println("You're on the first page")
+		return nil
+	}
+
+	// Make the HTTP request using the previous URL
+	resp, err := http.Get(cfg.PreviousURL)
+	if err != nil {
+		fmt.Println("An error occurred trying to find the previous locations")
+		return err
+	}
+	defer resp.Body.Close()
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		fmt.Println("Error reading response body")
+		return err
+	}
+
+	var locationResp LocationAreaResponse
+	err = json.Unmarshal(body, &locationResp)
+	if err != nil {
+		fmt.Println("Error parsing location data")
+		return err
+	}
+
+	// Print location names
+	for _, location := range locationResp.Results {
+		fmt.Println(location.Name)
+	}
+
+	// Update config for pagination
+	cfg.NextURL = locationResp.Next
+	cfg.PreviousURL = locationResp.Previous
+
 	return nil
 }

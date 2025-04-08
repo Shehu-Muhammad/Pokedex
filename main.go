@@ -16,27 +16,29 @@ type cliCommand struct {
 	callback    func(cfg *config) error
 }
 
-var commands = map[string]cliCommand{
-	"exit": {
-		name:        "exit",
-		description: "Exit the Pokedex",
-		callback:    commandExit,
-	},
-	"help": {
-		name:        "help",
-		description: "Displays a help message",
-		callback:    commandHelp,
-	},
-	"map": {
-		name:        "map",
-		description: "Displays the names of 20 location areas in the Pokemon world",
-		callback:    commandMap,
-	},
-	"mapb": {
-		name:        "map",
-		description: "Displays the names of 20 previous location areas in the Pokemon world",
-		callback:    commandMapb,
-	},
+func getCommands() map[string]cliCommand {
+	return map[string]cliCommand{
+		"help": {
+			name:        "help",
+			description: "Displays a help message",
+			callback:    commandHelp,
+		},
+		"map": {
+			name:        "map",
+			description: "Get the next page of locations",
+			callback:    commandMapf,
+		},
+		"mapb": {
+			name:        "mapb",
+			description: "Get the previous page of locations",
+			callback:    commandMapb,
+		},
+		"exit": {
+			name:        "exit",
+			description: "Exit the Pokedex",
+			callback:    commandExit,
+		},
+	}
 }
 
 func main() {
@@ -53,7 +55,7 @@ func main() {
 
 		// Lookup the command in the registry
 		if len(cleanedText) > 0 {
-			command, exists := commands[cleanedText[0]]
+			command, exists := getCommands()[cleanedText[0]]
 			if exists {
 				err := command.callback(cfg)
 				if err != nil {
@@ -80,10 +82,9 @@ func commandHelp(cfg *config) error {
 	fmt.Println("Welcome to the Pokedex!")
 	fmt.Println("Usage:")
 	fmt.Println()
-	fmt.Println("help: Displays a help message")
-	fmt.Println("exit: Exit the Pokedex")
-	fmt.Println("map: Displays the names of 20 location areas in the Pokemon world")
-	fmt.Println("mapb: Displays the names of 20 previous location areas in the Pokemon world")
+	for _, cmd := range getCommands() {
+		fmt.Printf("%s: %s\n", cmd.name, cmd.description)
+	}
 	return nil
 }
 
@@ -102,7 +103,7 @@ type LocationAreaResponse struct {
 	} `json:"results"`
 }
 
-func commandMap(cfg *config) error {
+func commandMapf(cfg *config) error {
 	// 1. Determine which URL to use (first request or using the NextURL)
 	url := "https://pokeapi.co/api/v2/location-area"
 	if cfg.NextURL != "" {

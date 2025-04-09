@@ -5,73 +5,60 @@ import (
 	"time"
 )
 
-// cacheEntry represents a single entry in the cache
+// Cache -
+type Cache struct {
+	cache map[string]cacheEntry
+	mux   *sync.Mutex
+}
+
 type cacheEntry struct {
 	createdAt time.Time
 	val       []byte
 }
 
-// Cache stores response data with timestamps
-type Cache struct {
-	entries map[string]cacheEntry
-	mutex   sync.Mutex
+// NewCache -
+func NewCache(interval time.Duration) Cache {
+	c := Cache{
+		cache: make(map[string]cacheEntry),
+		mux:   &sync.Mutex{},
+	}
+
+	go c.reapLoop(interval)
+
+	return c
 }
 
-// Add adds a new entry to the cache
-func (c *Cache) Add(key string, val []byte) {
-	// Lock the mutex before accessing the map
-	c.mutex.Lock()
-	// Make sure to unlock when we're done
-	defer c.mutex.Unlock()
-
-	// Now it's safe to modify the map
-	c.entries[key] = cacheEntry{
-		createdAt: time.Now(),
-		val:       val,
+// Add -
+func (c *Cache) Add(key string, value []byte) {
+	c.mux.Lock()
+	defer c.mux.Unlock()
+	c.cache[key] = cacheEntry{
+		createdAt: time.Now().UTC(),
+		val:       value,
 	}
 }
 
-// Get retrieves an entry from the cache
+// Get -
 func (c *Cache) Get(key string) ([]byte, bool) {
-	// Lock the mutex before accessing the map
-	c.mutex.Lock()
-	// Make sure to unlock when we're done
-	defer c.mutex.Unlock()
-
-	// Now it's safe to read from the map
-	entry, found := c.entries[key]
-	if !found {
-		return nil, false
-	}
-	return entry.val, true
+	c.mux.Lock()
+	defer c.mux.Unlock()
+	val, ok := c.cache[key]
+	return val.val, ok
 }
 
 func (c *Cache) reapLoop(interval time.Duration) {
 	ticker := time.NewTicker(interval)
-	defer ticker.Stop()
-
 	for range ticker.C {
-		c.mutex.Lock()
-		now := time.Now()
-		for key, entry := range c.entries {
-			// Check if the entry is older than the interval
-			if now.Sub(entry.createdAt) > interval {
-				// Remove expired entries
-				delete(c.entries, key)
-			}
-		}
-		c.mutex.Unlock()
+		c.reap(time.Now().UTC(), interval)
 	}
 }
 
-// NewCache creates a new cache with the given interval for cache entry expiration
-func NewCache(interval time.Duration) *Cache {
-	cache := &Cache{
-		entries: make(map[string]cacheEntry),
+func (c *Cache) reap(now time.Time, last time.Duration) {
+	c.mux.Lock()
+	defer c.mux.Unlock()
+	for k, v := range c.cache {
+		if v.createdAt.Before(now.Add(-last)) {
+			delete(c.cache, k)
+		}
 	}
-
-	// Start the background reaping process
-	go cache.reapLoop(interval)
-
-	return cache
 }

@@ -31,7 +31,7 @@ func commandCatch(cfg *config, args ...string) error {
 	if caught {
 		fmt.Printf("%s was caught!\n", pokemonName)
 		// Add to your map of caught Pokemon
-		//caughtPokemon[pokemonName] = pokemon
+		cfg.caughtPokemon[pokemon.Name] = pokemon
 	} else {
 		fmt.Printf("%s escaped!\n", pokemonName)
 	}
